@@ -191,7 +191,9 @@
     
     for (int i = 0; i < [self.filters count]; i++) {
         theFilter = [self.filters objectAtIndex:i];
-        [prevFilter removeAllTargets];
+        if (i != 0){
+            [prevFilter removeAllTargets];
+        }
         [prevFilter addTarget:theFilter];
         prevFilter = theFilter;
     }
