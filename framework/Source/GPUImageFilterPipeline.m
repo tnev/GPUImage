@@ -198,7 +198,9 @@
         prevFilter = theFilter;
     }
     
-    [prevFilter removeAllTargets];
+    if (self.filters.count > 0){
+        [prevFilter removeAllTargets];
+    }
     
     if (self.output != nil) {
         [prevFilter addTarget:self.output];
