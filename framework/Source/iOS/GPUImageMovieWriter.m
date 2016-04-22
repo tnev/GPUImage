@@ -448,7 +448,7 @@ NSString *const kGPUImageColorSwizzlingFragmentShaderString = SHADER_STRING
                                                                     );
             //passing a live pointer to the audio buffers, try to process them in-place or we might have syncing issues.
             
-            self.audioProcessingCallback(&audioBufferList, numSamplesInBuffer);
+            self.audioProcessingCallback(&audioBufferList, numSamplesInBuffer, currentSampleTime);
             
 //            for (int bufferCount=0; bufferCount < audioBufferList.mNumberBuffers; bufferCount++) {
 //                SInt16 *samples = (SInt16 *)audioBufferList.mBuffers[bufferCount].mData;
