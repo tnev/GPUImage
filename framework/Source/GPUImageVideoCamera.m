@@ -1,6 +1,7 @@
 #import "GPUImageVideoCamera.h"
 #import "GPUImageMovieWriter.h"
 #import "GPUImageFilter.h"
+#import <mach/mach_time.h>
 
 void setColorConversion601( GLfloat conversionMatrix[9] )
 {
@@ -22,6 +23,9 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 
 @interface GPUImageVideoCamera () 
 {
+    AVAudioEngine *audioEngine;
+    AVAudioInputNode *inputNode;
+    
 	AVCaptureDeviceInput *audioInput;
 	AVCaptureAudioDataOutput *audioOutput;
     NSDate *startingCaptureTime;
@@ -255,30 +259,32 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 
 - (BOOL)addAudioInputsAndOutputs
 {
-    if (audioOutput)
-        return NO;
     
-    [_captureSession beginConfiguration];
+    audioEngine = [[AVAudioEngine alloc] init];
+
+    inputNode = [audioEngine inputNode];
+
+    [inputNode installTapOnBus:0 bufferSize:4096 format:[inputNode outputFormatForBus:0] block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
+        
+        CMFormatDescriptionRef format = [inputNode outputFormatForBus:0].formatDescription;
+        
+        //Set Time
+        CMSampleTimingInfo timing = { CMTimeMake(1, when.sampleRate), CMTimeMake(when.sampleTime, when.sampleRate), kCMTimeInvalid };
+        
+        //Create CMSampleBufferRef
+        CMSampleBufferRef sampleBuffer = NULL;
+        OSStatus status = CMSampleBufferCreate(kCFAllocatorDefault, NULL, false, NULL, NULL, format, buffer.frameLength, 1, &timing, 0, NULL, &sampleBuffer);
+        if (status != noErr) {
+            // couldn't create the sample buffer
+            CFRelease(format);
+            return;
+        }
+        
+        [self processAudioSampleBuffer:sampleBuffer];
+    }];
     
-    _microphone = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
-    audioInput = [AVCaptureDeviceInput deviceInputWithDevice:_microphone error:nil];
-    if ([_captureSession canAddInput:audioInput])
-    {
-        [_captureSession addInput:audioInput];
-    }
-    audioOutput = [[AVCaptureAudioDataOutput alloc] init];
+    [audioEngine prepare];
     
-    if ([_captureSession canAddOutput:audioOutput])
-    {
-        [_captureSession addOutput:audioOutput];
-    }
-    else
-    {
-        NSLog(@"Couldn't add audio output");
-    }
-    [audioOutput setSampleBufferDelegate:self queue:audioProcessingQueue];
-    
-    [_captureSession commitConfiguration];
     return YES;
 }
 
@@ -349,6 +355,7 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
     if ([_captureSession isRunning])
     {
         [_captureSession stopRunning];
+        [audioEngine stop];
     }
 }
 
@@ -906,15 +913,8 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 
 - (void)setAudioEncodingTarget:(GPUImageMovieWriter *)newValue;
 {
-    if (newValue) {
-        /* Add audio inputs and outputs, if necessary */
-        addedAudioInputsDueToEncodingTarget |= [self addAudioInputsAndOutputs];
-    } else if (addedAudioInputsDueToEncodingTarget) {
-        /* Remove audio inputs and outputs, if they were added by previously setting the audio encoding target */
-        [self removeAudioInputsAndOutputs];
-        addedAudioInputsDueToEncodingTarget = NO;
-    }
     
+    [self addAudioInputsAndOutputs];
     [super setAudioEncodingTarget:newValue];
 }
 
