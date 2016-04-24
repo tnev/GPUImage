@@ -456,7 +456,7 @@ NSString *const kGPUImageColorSwizzlingFragmentShaderString = SHADER_STRING
             //            }
         }
         
-        NSLog(@"Recorded audio sample time: %lld, %d, %lld", currentSampleTime.value, currentSampleTime.timescale, currentSampleTime.epoch);
+        //NSLog(@"Recorded audio sample time: %lld, %d, %lld", currentSampleTime.value, currentSampleTime.timescale, currentSampleTime.epoch);
         void(^write)() = ^() {
             while( ! assetWriterAudioInput.readyForMoreMediaData && ! _encodingLiveVideo && ! audioEncodingIsFinished ) {
                 NSDate *maxDate = [NSDate dateWithTimeIntervalSinceNow:0.5];
@@ -939,11 +939,11 @@ NSString *const kGPUImageColorSwizzlingFragmentShaderString = SHADER_STRING
             //configure output settings
             AudioChannelLayout acl;
             bzero( &acl, sizeof(acl));
-            acl.mChannelLayoutTag = kAudioChannelLayoutTag_Mono;
+            acl.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
             
             audioOutputSettings = [NSDictionary dictionaryWithObjectsAndKeys:
                                    [ NSNumber numberWithInt: kAudioFormatMPEG4AAC], AVFormatIDKey,
-                                   [ NSNumber numberWithInt: 1 ], AVNumberOfChannelsKey,
+                                   [ NSNumber numberWithInt: 2 ], AVNumberOfChannelsKey,
                                    [ NSNumber numberWithFloat: preferredHardwareSampleRate ], AVSampleRateKey,
                                    [ NSData dataWithBytes: &acl length: sizeof( acl ) ], AVChannelLayoutKey,
                                    //[ NSNumber numberWithInt:AVAudioQualityLow], AVEncoderAudioQualityKey,

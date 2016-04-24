@@ -265,25 +265,30 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
     inputNode = [audioEngine inputNode];
 
     [inputNode installTapOnBus:0 bufferSize:4096 format:[inputNode outputFormatForBus:0] block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
-        
-        CMFormatDescriptionRef format = [inputNode outputFormatForBus:0].formatDescription;
-        
-        //Set Time
-        CMSampleTimingInfo timing = { CMTimeMake(1, when.sampleRate), CMTimeMake(when.sampleTime, when.sampleRate), kCMTimeInvalid };
-        
-        //Create CMSampleBufferRef
-        CMSampleBufferRef sampleBuffer = NULL;
-        OSStatus status = CMSampleBufferCreate(kCFAllocatorDefault, NULL, false, NULL, NULL, format, buffer.frameLength, 1, &timing, 0, NULL, &sampleBuffer);
-        if (status != noErr) {
-            // couldn't create the sample buffer
-            CFRelease(format);
-            return;
-        }
-        
-        [self processAudioSampleBuffer:sampleBuffer];
+        dispatch_async(audioProcessingQueue, ^{
+            CMFormatDescriptionRef format = [inputNode outputFormatForBus:0].formatDescription;
+            
+            //Set Time
+            CMSampleTimingInfo timing = { CMTimeMake(1, when.sampleRate), CMTimeMake(when.sampleTime, when.sampleRate), kCMTimeInvalid };
+            
+            //Create CMSampleBufferRef
+            CMSampleBufferRef sampleBuffer = NULL;
+            OSStatus status = CMSampleBufferCreate(kCFAllocatorDefault, NULL, false, NULL, NULL, format, buffer.frameLength, 1, &timing, 0, NULL, &sampleBuffer);
+            if (status != noErr) {
+                // couldn't create the sample buffer
+                CFRelease(format);
+                return;
+            }
+            
+            [self processAudioSampleBuffer:sampleBuffer];
+        });
     }];
     
-    [audioEngine prepare];
+    NSError *error = nil;
+    [audioEngine startAndReturnError:&error];
+    if (error != nil) {
+        NSLog(@"Error initializing audio engine");
+    }
     
     return YES;
 }
