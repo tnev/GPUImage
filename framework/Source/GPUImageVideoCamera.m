@@ -24,7 +24,11 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 @interface GPUImageVideoCamera () 
 {
     AVAudioEngine *audioEngine;
+    AVAudioMixerNode *mainMixer;
     AVAudioInputNode *inputNode;
+    AVAudioUnitDelay *delayUnit;
+    AVAudioUnitDistortion *distortionUnit;
+    AVAudioUnitDistortion *distortionUnit2;
     
 	AVCaptureDeviceInput *audioInput;
 	AVCaptureAudioDataOutput *audioOutput;
@@ -259,23 +263,73 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 
 - (BOOL)addAudioInputsAndOutputs
 {
-    
+    //engine and main mixer
     audioEngine = [[AVAudioEngine alloc] init];
+    mainMixer = [audioEngine mainMixerNode];
 
+    //input
     inputNode = [audioEngine inputNode];
+    AVAudioFormat *inputFormat = [inputNode outputFormatForBus:0];
+    
+    //standard format
+    AVAudioFormat *standardFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:inputFormat.sampleRate channels:inputFormat.channelCount];
+    
+//    //Delay Unit
+//    delayUnit = [[AVAudioUnitDelay alloc] init];
+//    delayUnit.wetDryMix = 10;
+//    delayUnit.delayTime = 0.35;
+//    [audioEngine attachNode:delayUnit];
+    
+//    //Distortion Unit
+//    distortionUnit = [[AVAudioUnitDistortion alloc] init];
+//    [distortionUnit loadFactoryPreset:AVAudioUnitDistortionPresetMultiDecimated3];
+//    distortionUnit.wetDryMix = 100;
+//    [audioEngine attachNode:distortionUnit];
+    
+//    //Distortion Unit 2
+//    distortionUnit2 = [[AVAudioUnitDistortion alloc] init];
+//    [distortionUnit loadFactoryPreset:AVAudioUnitDistortionPresetSpeechCosmicInterference];
+//    distortionUnit.wetDryMix = 100;
+//    [audioEngine attachNode:distortionUnit2];
+    
+    //Connections
+    [audioEngine connect:inputNode to:mainMixer format:standardFormat];
+//    [audioEngine connect:distortionUnit to:distortionUnit2 format:standardFormat];
+//    [audioEngine connect:distortionUnit2 to:mainMixer format:standardFormat];
 
-    [inputNode installTapOnBus:0 bufferSize:4096 format:[inputNode outputFormatForBus:0] block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
+    //Audio Tap: sends audio to the audio encoding target from our engine's main mixer
+    [mainMixer installTapOnBus:0 bufferSize:2048 format:[mainMixer outputFormatForBus:0] block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
         dispatch_async(audioProcessingQueue, ^{
-            CMFormatDescriptionRef format = [inputNode outputFormatForBus:0].formatDescription;
+            CMFormatDescriptionRef format = [mainMixer outputFormatForBus:0].formatDescription;
             
             //Set Time
-            CMSampleTimingInfo timing = { CMTimeMake(1, when.sampleRate), CMTimeMake(when.sampleTime, when.sampleRate), kCMTimeInvalid };
+            kern_return_t kerror;
+            mach_timebase_info_data_t tinfo;
+            
+            kerror = mach_timebase_info(&tinfo);
+            if (kerror != KERN_SUCCESS) {
+                // TODO: handle error
+            }
+            
+            double _hostTimeToNSFactor = (double)tinfo.numer / tinfo.denom;
+            uint64_t timeNS = (uint64_t)(when.hostTime * _hostTimeToNSFactor);
+            CMTime presentationTime = CMTimeMake(timeNS, 1000000000);
+            CMSampleTimingInfo timing = { CMTimeMake(1, when.sampleRate), presentationTime, kCMTimeInvalid };
             
             //Create CMSampleBufferRef
             CMSampleBufferRef sampleBuffer = NULL;
             OSStatus status = CMSampleBufferCreate(kCFAllocatorDefault, NULL, false, NULL, NULL, format, buffer.frameLength, 1, &timing, 0, NULL, &sampleBuffer);
             if (status != noErr) {
                 // couldn't create the sample buffer
+                NSLog(@"Error creating CMSampleBufferRef");
+                CFRelease(format);
+                return;
+            }
+            
+            status = CMSampleBufferSetDataBufferFromAudioBufferList(sampleBuffer, kCFAllocatorDefault, kCFAllocatorDefault, 0, buffer.audioBufferList);
+            if (status != noErr) {
+                // couldn't create the sample buffer
+                NSLog(@"Error filling CMSampleBufferRef");
                 CFRelease(format);
                 return;
             }
@@ -284,6 +338,10 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
         });
     }];
     
+    //Ensure audio isn't feeding back out during recording
+    [audioEngine disconnectNodeInput:audioEngine.outputNode];
+    
+    //GENTLEMEN, START YOUR ENGINES!
     NSError *error = nil;
     [audioEngine startAndReturnError:&error];
     if (error != nil) {
